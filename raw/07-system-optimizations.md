@@ -314,14 +314,14 @@ Spotlight indexing dev directories causes I/O contention and wastes CPU:
 
 ```bash
 # Exclude node_modules, .next, etc. from Spotlight
-sudo mdutil -i off /Users/joaquin/Documents/hypebase-ai/node_modules
-sudo mdutil -i off /Users/joaquin/Documents/hypebase-ai/.next
+sudo mdutil -i off /path/to/your-project/node_modules
+sudo mdutil -i off /path/to/your-project/.next
 
 # Or add to Spotlight privacy list via System Settings:
 # System Settings > Siri & Spotlight > Spotlight Privacy > Add folders
 
 # Exclude all node_modules recursively (add to .metadata_never_index)
-find /Users/joaquin/Documents -name "node_modules" -type d -exec touch {}/.metadata_never_index \;
+find /path/to/your-projects -name "node_modules" -type d -exec touch {}/.metadata_never_index \;
 ```
 
 **Alternative:** Add directories to System Settings > Spotlight > Privacy.
@@ -330,12 +330,12 @@ find /Users/joaquin/Documents -name "node_modules" -type d -exec touch {}/.metad
 
 ```bash
 # Exclude build artifacts from Time Machine
-sudo tmutil addexclusion /Users/joaquin/Documents/hypebase-ai/node_modules
-sudo tmutil addexclusion /Users/joaquin/Documents/hypebase-ai/.next
-sudo tmutil addexclusion /Users/joaquin/Documents/hypebase-ai/.turbo
+sudo tmutil addexclusion /path/to/your-project/node_modules
+sudo tmutil addexclusion /path/to/your-project/.next
+sudo tmutil addexclusion /path/to/your-project/.turbo
 
 # Verify exclusions
-tmutil isexcluded /Users/joaquin/Documents/hypebase-ai/node_modules
+tmutil isexcluded /path/to/your-project/node_modules
 ```
 
 ### 3.3 File Descriptor Limits (macOS)
@@ -413,7 +413,7 @@ diskutil erasevolume HFS+ "RAMDisk" $DEVICE
 
 # Mount point: /Volumes/RAMDisk
 # Symlink build caches to RAM disk
-ln -sf /Volumes/RAMDisk/turbo-cache /Users/joaquin/Documents/hypebase-ai/.turbo
+ln -sf /Volumes/RAMDisk/turbo-cache /path/to/your-project/.turbo
 
 # Auto-create on boot (add to login items or launchd)
 ```
@@ -857,7 +857,7 @@ For bind-mount-heavy projects:
 
 ```
 Docker Desktop > Settings > Resources > File Sharing > Synchronized file shares
-Add: /Users/joaquin/Documents/hypebase-ai
+Add: /path/to/your-project
 ```
 
 **Impact:** 59% faster than standard Docker-VZ. Requires Docker Desktop paid plan.

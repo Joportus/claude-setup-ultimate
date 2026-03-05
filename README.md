@@ -61,7 +61,7 @@ P8: Verification (runs after any/all of the above)
 
 ```bash
 # 1. Clone or download
-git clone https://github.com/YOUR_ORG/claude-setup-ultimate.git
+git clone https://github.com/Joportus/claude-setup-ultimate.git
 cd claude-setup-ultimate
 
 # 2. Make executable
@@ -131,7 +131,7 @@ If you prefer to run prompts individually:
 
 | Tool | Minimum Version | Install |
 |------|----------------|---------|
-| **Claude Code CLI** | Latest | `npm install -g @anthropic-ai/claude-code` |
+| **Claude Code CLI** | Latest | `npm install -g @anthropic-ai/claude-code` (or `bun install -g @anthropic-ai/claude-code` / `npx @anthropic-ai/claude-code`) |
 | **Git** | 2.x | Included with most systems |
 | **Node.js or Bun** | Node 18+ / Bun 1.x+ | [nodejs.org](https://nodejs.org) or [bun.sh](https://bun.sh) |
 
@@ -193,7 +193,7 @@ Not every project needs every feature. Common skip patterns:
 | Solo developer, no teams | `--skip 5` |
 | No issue tracking needed | `--skip 4 --skip 5` |
 | Already have optimized shell | `--skip 7` |
-| Just want hooks and settings | `--prompt 2 && --prompt 3` |
+| Just want hooks and settings | `--prompt 2` then `--prompt 3` |
 | Quick verification of existing setup | `--verify-only` |
 
 ---
@@ -290,8 +290,8 @@ npm install -g @anthropic-ai/claude-code
 
 **Solution:**
 ```bash
-# Try Homebrew (macOS)
-brew install beads
+# Homebrew (macOS/Linux)
+brew install steveyegge/tap/beads
 
 # Or npm global install
 npm install -g @beads/bd
@@ -309,8 +309,8 @@ bd version
 
 **Solution:**
 1. Check for API keys: some servers (GitHub) need tokens set in environment
-2. Test directly: `npx -y @upstash/context7-mcp` should start without errors
-3. Remove and re-add: `claude mcp remove context7 && claude mcp add context7 -- npx -y @upstash/context7-mcp`
+2. Test the MCP endpoint: Context7 uses HTTP transport at `https://mcp.context7.com/mcp` (not stdio)
+3. Remove and re-add: `claude mcp remove context7 && claude mcp add context7 --transport http https://mcp.context7.com/mcp`
 
 ---
 
@@ -383,18 +383,18 @@ This system is built on extensive research. The raw research files are available
 
 | File | Lines | Topic |
 |------|-------|-------|
-| `raw/01-beads-deep-dive.md` | Beads issue tracker internals and patterns |
-| `raw/02-agent-teams-deep-dive.md` | Multi-agent orchestration patterns |
-| `raw/03-hooks-system-deep-dive.md` | All 18 hook events with examples |
-| `raw/04-settings-permissions-claudemd.md` | Configuration system deep dive |
-| `raw/05-external-tools-repos.md` | MCP servers, skills, plugins ecosystem |
-| `raw/06-community-resources.md` | Community guides and resources |
-| `raw/07-system-optimizations.md` | Shell, git, terminal performance |
-| `raw/08-token-optimization.md` | Context window and token efficiency |
-| `raw/09-mcp-servers-ecosystem.md` | MCP server ecosystem analysis |
-| `raw/10-context-memory-persistence.md` | Memory and persistence patterns |
-| `raw/11-dx-workflows-automation.md` | Developer experience workflows |
-| `raw/12-security-permissions.md` | Security model and permissions |
+| `raw/01-beads-deep-dive.md` | 1,553 | Beads issue tracker internals and patterns |
+| `raw/02-agent-teams-deep-dive.md` | 1,657 | Multi-agent orchestration patterns |
+| `raw/03-hooks-system-deep-dive.md` | 1,951 | All 18 hook events with examples |
+| `raw/04-settings-permissions-claudemd.md` | 1,627 | Configuration system deep dive |
+| `raw/05-external-tools-repos.md` | 620 | MCP servers, skills, plugins ecosystem |
+| `raw/06-community-resources.md` | 797 | Community guides and resources |
+| `raw/07-system-optimizations.md` | 1,136 | Shell, git, terminal performance |
+| `raw/08-token-optimization.md` | 1,095 | Context window and token efficiency |
+| `raw/09-mcp-servers-ecosystem.md` | 937 | MCP server ecosystem analysis |
+| `raw/10-context-memory-persistence.md` | 1,146 | Memory and persistence patterns |
+| `raw/11-dx-workflows-automation.md` | 1,581 | Developer experience workflows |
+| `raw/12-security-permissions.md` | 1,835 | Security model and permissions |
 
 ### Synthesis Documents
 
