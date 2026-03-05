@@ -63,7 +63,7 @@
   },
   "env": {
     "ZDOTDIR": "~/.config/zsh-claude",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "60",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1"
   },
   "hooks": {}
@@ -385,7 +385,7 @@ Set in `settings.json` under `"env"` key, or export in shell:
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 32,000 | Max output tokens per response |
 | `CLAUDE_CODE_EFFORT_LEVEL` | - | `low`/`medium`/`high` reasoning depth |
 | `DISABLE_NON_ESSENTIAL_MODEL_CALLS` | - | Skip flavor text generation |
-| `ENABLE_TOOL_SEARCH` | `auto:10` | Tool deferral threshold (% of context) |
+| `ENABLE_TOOL_SEARCH` | `auto:5` | Tool deferral threshold (% of context) |
 | `MAX_THINKING_TOKENS` | 31,999 | Extended thinking budget |
 | `MAX_MCP_OUTPUT_TOKENS` | 25,000 | MCP tool output limit |
 | `MCP_TIMEOUT` | - | MCP server startup timeout (ms) |
@@ -436,20 +436,14 @@ Hooks are deterministic shell scripts or prompts that run at specific lifecycle 
 |-------|-----------|-----------|-------------|
 | `PreToolUse` | Before any tool call | Yes (deny) | Yes (modify input) |
 | `PostToolUse` | After any tool call | No | No (observe only) |
-| `PreBash` | Before `Bash` tool | Yes (deny/modify) | Yes |
-| `PostBash` | After `Bash` tool | No | No |
-| `PreRead` | Before `Read` tool | Yes | Yes |
-| `PostRead` | After `Read` tool | No | No |
-| `PreWrite` | Before `Write` tool | Yes | Yes |
-| `PostWrite` | After `Write` tool | No | No |
-| `PreEdit` | Before `Edit` tool | Yes | Yes |
-| `PostEdit` | After `Edit` tool | No | No |
+| `PostToolUseFailure` | After a tool call fails | No | No (observe only) |
+| `PermissionRequest` | User prompted for permission | Yes (allow/deny) | Yes (modify input) |
 
 ### Communication Events
 
 | Event | Fires When | Can Block? |
 |-------|-----------|-----------|
-| `Notification` | Notification would be sent | Yes |
+| `Notification` | Notification would be sent | No (observe only) |
 | `UserPromptSubmit` | User presses Enter | Yes (modify prompt) |
 
 ### Team Events
@@ -458,6 +452,18 @@ Hooks are deterministic shell scripts or prompts that run at specific lifecycle 
 |-------|-----------|-----------|
 | `TeammateIdle` | Teammate about to go idle | Yes |
 | `TaskCompleted` | CC task marked complete | Yes |
+| `SubagentStart` | Subagent spawned | No (observe only) |
+| `SubagentStop` | Subagent finished | Yes |
+
+### Lifecycle Events
+
+| Event | Fires When | Can Block? |
+|-------|-----------|-----------|
+| `SessionEnd` | Session ends | No |
+| `InstructionsLoaded` | CLAUDE.md/rules loaded | No |
+| `ConfigChange` | Settings file changed | Yes |
+| `WorktreeCreate` | Git worktree created | Yes |
+| `WorktreeRemove` | Git worktree removed | No |
 
 ## 2.3 Handler Types
 
@@ -637,9 +643,9 @@ osascript -e 'display notification "Claude Code task completed" with title "Clau
 ```json
 {
   "hooks": {
-    "PostEdit": [
+    "PostToolUse": [
       {
-        "matcher": "*.ts",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
@@ -1075,6 +1081,7 @@ claude mcp remove <name>     # Remove
       "url": "https://mcp.context7.com/mcp"
     },
     "playwright": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest"]
     }
@@ -1637,7 +1644,7 @@ echo "Done! Manual: ZDOTDIR, terminal switch, Docker VirtioFS, dnsmasq"
 
 ### Auto-Compaction
 
-Triggers at ~95% by default. Override: `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50`
+Triggers at ~95% by default. Override: `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60`
 
 ### Partial Compaction
 
@@ -2159,6 +2166,7 @@ For maximum isolation, run in a microVM.
 8. **Use `.claudeignore`** to prevent reading sensitive files (.env, credentials)
 9. **Set workspace spend limits** for API usage control
 10. **Use managed settings** for enterprise enforcement
+11. **Understand `--dangerously-skip-permissions`** -- This flag (enabled by `--allow-dangerously-skip-permissions` in settings) bypasses ALL permission checks including tool approvals. Only use for fully trusted, automated pipelines (CI/CD). Never expose to untrusted input.
 
 ## 10.4 Common Security Patterns
 
@@ -2397,7 +2405,7 @@ https://podcasts.apple.com/us/podcast/inside-claude-code-from-the-engineers-who-
   },
   "env": {
     "ZDOTDIR": "~/.config/zsh-claude",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "60",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "ENABLE_TOOL_SEARCH": "auto:5"
   },
@@ -2442,23 +2450,24 @@ https://podcasts.apple.com/us/podcast/inside-claude-code-from-the-engineers-who-
 
 | Event | When | Input | Can Block | Can Modify |
 |-------|------|-------|-----------|-----------|
-| SessionStart | Session begins | session_id | No | No |
-| Stop | Generation stops | session_id | No | No |
+| SessionStart | Session begins | session_id, source | No | No |
+| SessionEnd | Session ends | session_id | No | No |
+| Stop | Generation stops | session_id | Yes | No |
 | PreCompact | Before compaction | session_id | No | No |
 | PreToolUse | Before any tool | tool_name, tool_input | Yes | Yes |
 | PostToolUse | After any tool | tool_name, tool_input, tool_output | No | No |
-| PreBash | Before Bash | command | Yes | Yes (modify cmd) |
-| PostBash | After Bash | command, stdout, stderr, exit_code | No | No |
-| PreRead | Before Read | file_path | Yes | Yes |
-| PostRead | After Read | file_path, content | No | No |
-| PreWrite | Before Write | file_path, content | Yes | Yes |
-| PostWrite | After Write | file_path | No | No |
-| PreEdit | Before Edit | file_path, changes | Yes | Yes |
-| PostEdit | After Edit | file_path | No | No |
-| Notification | Alert would send | message | Yes | No |
+| PostToolUseFailure | After tool fails | tool_name, tool_input, error | No | No |
+| PermissionRequest | Permission prompt | tool_name, tool_input | Yes | Yes |
+| Notification | Alert would send | message | No | No |
 | UserPromptSubmit | User presses Enter | prompt | Yes | Yes (modify prompt) |
 | TeammateIdle | Agent going idle | agent_name | Yes | No |
 | TaskCompleted | Task marked done | task_id | Yes | No |
+| SubagentStart | Subagent spawned | agent_type | No | No |
+| SubagentStop | Subagent finished | agent_type | Yes | No |
+| ConfigChange | Settings changed | config_source | Yes | No |
+| InstructionsLoaded | CLAUDE.md loaded | instructions | No | No |
+| WorktreeCreate | Worktree created | path | Yes | Yes |
+| WorktreeRemove | Worktree removed | path | No | No |
 
 ---
 

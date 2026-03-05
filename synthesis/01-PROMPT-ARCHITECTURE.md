@@ -63,10 +63,10 @@ P8: Verification (runs after any/all of the above)
 
 **Hard dependencies** (must run in order):
 - P2 before P3 (hooks need settings.json to exist)
-- P3 before P4 (beads hooks integrate with the hooks system)
-- P4 before P5 (agent teams reference beads for task tracking)
 
-**Soft dependencies** (recommended order, but not required):
+**Soft dependencies** (warn and continue if predecessor not run, but not hard blocks):
+- P3 before P4 (beads hooks integrate with the hooks system -- but beads works without hooks)
+- P4 before P5 (agent teams reference beads for task tracking -- but teams work without beads)
 - P1 before all others (provides detection context, but prompts can self-detect)
 - P6 independent of P4/P5 (MCP doesn't require beads or teams)
 - P7 independent of everything (system optimization is orthogonal)
@@ -357,7 +357,7 @@ The prompt MUST adapt the permission rules based on the detected stack:
 
 If CLAUDE.md does not exist, create a comprehensive scaffold. If it exists, extend it with missing sections (never replace existing content).
 
-**Scaffold structure** (from research -- R4, R10, R15):
+**Scaffold structure** (from research -- raw/04-settings-permissions-claudemd.md, raw/10-context-memory-persistence.md):
 
 ```markdown
 # CLAUDE.md -- [Project Name]
@@ -392,7 +392,7 @@ If CLAUDE.md does not exist, create a comprehensive scaffold. If it exists, exte
 [detected test patterns]
 ```
 
-**Key CLAUDE.md best practices to embed** (from R4, R10):
+**Key CLAUDE.md best practices to embed** (from raw/04-settings-permissions-claudemd.md, raw/10-context-memory-persistence.md):
 - Use imperative voice ("Use X", "Never do Y") -- not suggestions
 - Keep under 500 lines (larger = diluted attention, higher token cost)
 - Use tables for structured data (more token-efficient than prose)
@@ -481,10 +481,10 @@ The prompt configures these hook events (all 18 supported events, but only insta
 
 | Event | Hook Purpose |
 |-------|-------------|
-| `SubagentStart` | Log subagent spawning for cost tracking |
-| `SubagentStop` | Collect subagent results |
-| `ConfigChange` | Alert on config changes |
-| `WorktreeCreate` | Custom worktree setup |
+| `SessionEnd` | Log session metrics, export data |
+| `InstructionsLoaded` | Inject dynamic context after instructions load |
+| `PostToolUseFailure` | Alert on tool failures, auto-retry logic |
+| `PermissionRequest` | Auto-approve/deny permissions programmatically |
 
 #### C. Hook Script Templates
 
@@ -495,7 +495,8 @@ The prompt configures these hook events (all 18 supported events, but only insta
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 # Block patterns: rm -rf /, sudo rm, pipe-to-bash/sh, DROP DATABASE, etc.
-# Output JSON: {"decision": "block", "reason": "..."} or {"decision": "approve"}
+# Output JSON on exit 0: {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}
+# Or allow: {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}
 ```
 
 **Auto-lint after edits** (`post-tool-lint.sh`):
@@ -542,7 +543,7 @@ Add the hooks configuration to `.claude/settings.json`:
           {
             "type": "command",
             "command": ".claude/hooks/session-start.sh",
-            "timeout": 10
+            "timeout": 10000
           }
         ]
       }
@@ -554,7 +555,7 @@ Add the hooks configuration to `.claude/settings.json`:
           {
             "type": "command",
             "command": ".claude/hooks/block-dangerous.sh",
-            "timeout": 5
+            "timeout": 5000
           }
         ]
       }
@@ -566,7 +567,7 @@ Add the hooks configuration to `.claude/settings.json`:
           {
             "type": "command",
             "command": ".claude/hooks/post-tool-lint.sh",
-            "timeout": 30
+            "timeout": 30000
           }
         ]
       }
@@ -577,7 +578,7 @@ Add the hooks configuration to `.claude/settings.json`:
           {
             "type": "command",
             "command": ".claude/hooks/pre-compact.sh",
-            "timeout": 10
+            "timeout": 10000
           }
         ]
       }
@@ -588,7 +589,7 @@ Add the hooks configuration to `.claude/settings.json`:
           {
             "type": "command",
             "command": ".claude/hooks/stop-summary.sh",
-            "timeout": 10
+            "timeout": 10000
           }
         ]
       }
@@ -599,7 +600,7 @@ Add the hooks configuration to `.claude/settings.json`:
           {
             "type": "command",
             "command": ".claude/hooks/notification.sh",
-            "timeout": 5,
+            "timeout": 5000,
             "async": true
           }
         ]
@@ -646,11 +647,10 @@ https://github.com/steveyegge/beads/releases
 
 ```bash
 # macOS (preferred)
-brew install beads
+brew install steveyegge/tap/beads
 
-# Or via npm/bun (fallback)
-bun install -g --trust @beads/bd
-# npm install -g @beads/bd
+# Or via npm (fallback)
+npm install -g @beads/bd
 
 # Verify
 bd version
@@ -676,7 +676,7 @@ Add to `~/.claude/settings.json` (global, applies to all projects):
           {
             "type": "command",
             "command": "bd prime 2>/dev/null || true",
-            "timeout": 10
+            "timeout": 10000
           }
         ]
       }
@@ -687,7 +687,7 @@ Add to `~/.claude/settings.json` (global, applies to all projects):
           {
             "type": "command",
             "command": "bd sync 2>/dev/null || true",
-            "timeout": 15
+            "timeout": 15000
           }
         ]
       }
@@ -709,7 +709,7 @@ Add to `.claude/settings.json` (project-level):
           {
             "type": "command",
             "command": ".claude/hooks/teammate-idle-check.sh",
-            "timeout": 10
+            "timeout": 10000
           }
         ]
       }
@@ -720,7 +720,7 @@ Add to `.claude/settings.json` (project-level):
           {
             "type": "command",
             "command": ".claude/hooks/task-completed-check.sh",
-            "timeout": 10
+            "timeout": 10000
           }
         ]
       }
@@ -884,7 +884,7 @@ If not already created in P3, add:
 2. `.claude/agents/` directory exists with at least 2 agent definitions
 3. CLAUDE.md contains agent teams section
 4. TeammateIdle and TaskCompleted hooks are configured
-5. Quick test: `claude --print -p "What agent teams features are available?"` returns relevant info
+5. Quick test: `claude -p "What agent teams features are available?"` returns relevant info
 
 ### Estimated Tokens: ~4,000
 
@@ -917,9 +917,9 @@ https://raw.githubusercontent.com/Cranot/claude-code-guide/main/README.md
 
 | Server | Purpose | Install Command |
 |--------|---------|----------------|
-| **Context7** | Up-to-date library documentation | `claude mcp add context7 -- npx -y @upstash/context7-mcp` |
-| **GitHub** | PR/issue management, code search | `claude mcp add github -- npx -y @modelcontextprotocol/server-github` |
-| **Playwright** | Browser automation and testing | `claude mcp add playwright -- npx -y @anthropic-ai/mcp-playwright` |
+| **Context7** | Up-to-date library documentation | `claude mcp add context7 --transport http --url https://mcp.context7.com/mcp` |
+| **GitHub** | PR/issue management, code search | `claude mcp add github --transport http --url https://api.githubcopilot.com/mcp/` |
+| **Playwright** | Browser automation and testing | `claude mcp add playwright --transport stdio -- npx -y @playwright/mcp@latest` |
 
 #### B. Stack-Specific MCP Servers
 
@@ -1208,7 +1208,7 @@ The prompt IS the verification. Success = all checks pass.
 
 ### Overview
 
-A single shell script (`setup-claude-code.sh`) that orchestrates all 8 prompts. The user downloads and runs it, and it handles everything.
+A single shell script (`setup-claude-ultimate.sh`) that orchestrates all 8 prompts. The user downloads and runs it, and it handles everything.
 
 ### Script Architecture
 
@@ -1218,7 +1218,7 @@ set -euo pipefail
 
 # === Configuration ===
 VERSION="1.0.0"
-SCRIPT_NAME="setup-claude-code"
+SCRIPT_NAME="setup-claude-ultimate"
 LOG_DIR="/tmp/${SCRIPT_NAME}-logs"
 PROMPTS_DIR="/tmp/${SCRIPT_NAME}-prompts"
 
@@ -1259,7 +1259,7 @@ main() {
         generate_prompt $i > "$PROMPTS_DIR/prompt-$i.md"
 
         # Run via claude headless mode
-        claude --print -p "$(cat $PROMPTS_DIR/prompt-$i.md)" \
+        claude -p "$(cat $PROMPTS_DIR/prompt-$i.md)" \
             2>&1 | tee "$LOG_DIR/prompt-$i.log"
 
         # Check exit code
@@ -1280,13 +1280,13 @@ main() {
 
 ```bash
 # Option A: Inline prompts (chosen -- self-contained, no network dependency)
-claude --print -p "$(cat <<'PROMPT'
+claude -p "$(cat <<'PROMPT'
 [prompt content here]
 PROMPT
 )"
 
 # Option B: Fetch from URL (alternative -- always latest)
-# claude --print -p "$(curl -s https://example.com/prompts/p1.md)"
+# claude -p "$(curl -s https://example.com/prompts/p1.md)"
 ```
 
 We chose **Option A** (inline) because:
@@ -1384,7 +1384,7 @@ show_progress() {
 Every step is logged with timestamps:
 
 ```
-/tmp/setup-claude-code-logs/
+/tmp/setup-claude-ultimate-logs/
   setup.log              # Main log
   prompt-1.log           # Full output of each prompt
   prompt-2.log
@@ -1397,34 +1397,34 @@ Every step is logged with timestamps:
 
 ```bash
 # Full setup
-./setup-claude-code.sh
+./setup-claude-ultimate.sh
 
 # Just verification
-./setup-claude-code.sh --verify-only
+./setup-claude-ultimate.sh --verify-only
 
 # Start from prompt 4 (already ran 1-3)
-./setup-claude-code.sh --from 4
+./setup-claude-ultimate.sh --from 4
 
 # Skip beads (don't want it)
-./setup-claude-code.sh --skip 4
+./setup-claude-ultimate.sh --skip 4
 
 # Dry run (show what would happen)
-./setup-claude-code.sh --dry-run
+./setup-claude-ultimate.sh --dry-run
 
 # Verbose (show full Claude output)
-./setup-claude-code.sh --verbose
+./setup-claude-ultimate.sh --verbose
 
 # Fetch latest prompts from GitHub
-./setup-claude-code.sh --fetch-latest
+./setup-claude-ultimate.sh --fetch-latest
 ```
 
 ### Distribution
 
 The script can be distributed as:
 
-1. **Single file**: `setup-claude-code.sh` (all prompts embedded)
+1. **Single file**: `setup-claude-ultimate.sh` (all prompts embedded)
 2. **GitHub repo**: Script + separate prompt files
-3. **One-liner install**: `curl -fsSL https://example.com/setup-claude-code.sh | bash`
+3. **One-liner install**: `curl -fsSL https://example.com/setup-claude-ultimate.sh | bash`
 
 ---
 
