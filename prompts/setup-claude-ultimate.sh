@@ -216,10 +216,10 @@ is_prompt_complete() {
         2) [[ -f "${HOME}/.claude/settings.json" ]] && [[ -f ".claude/settings.json" ]] && [[ -f "CLAUDE.md" ]] ;;
         3) [[ -d ".claude/hooks" ]] && [[ -f ".claude/hooks/block-dangerous.sh" ]] ;;
         4) command -v bd &>/dev/null && [[ -d ".beads" ]] ;;
-        5) grep -q "AGENT_TEAMS\|agent.teams\|agent-teams" "${HOME}/.claude/settings.json" 2>/dev/null || \
-           grep -q "AGENT_TEAMS\|agent.teams\|agent-teams" ".claude/settings.json" 2>/dev/null ;;
+        5) grep -qE "AGENT_TEAMS|agent.teams|agent-teams" "${HOME}/.claude/settings.json" 2>/dev/null || \
+           grep -qE "AGENT_TEAMS|agent.teams|agent-teams" ".claude/settings.json" 2>/dev/null ;;
         6) claude mcp list 2>/dev/null | grep -qi "context7" 2>/dev/null ;;
-        7) [[ -f ".claudeignore" ]] ;;
+        7) [[ -d "${HOME}/.config/zsh-claude" ]] || git config --global core.fsmonitor &>/dev/null ;;
         8) return 1 ;; # Verification always runs
         *) return 1 ;;
     esac
@@ -260,43 +260,55 @@ extract_prompt() {
         return 1
     fi
 
-    # Use awk to extract the outer code block content after the PROMPT N header.
-    # The outer fence opens with bare ```. Inner blocks open with ```lang and
-    # close with bare ```. We track inner block state so we only stop at the
-    # outer closing ```.
+    # Use awk to extract the prompt content between the outer code fence
+    # delimiters. The structure is:
+    #   ## PROMPT N: Title
+    #   ---
+    #   ```            <-- outer open
+    #   [content with inner ``` and ```lang blocks]
+    #   ```            <-- outer close
+    #   ---
+    #   ## PROMPT N+1  (or EOF)
+    #
+    # Inner bare ``` fences appear in P7 and P8 (Docker settings, tables,
+    # verification report). We cannot rely on matching bare ``` to find the
+    # outer close. Instead, we extract everything between the first ```
+    # after the header and the last ``` before the next --- + ## PROMPT
+    # boundary (or EOF). We do this by capturing all lines between the
+    # first ``` after the header and the --- separator before the next
+    # ## PROMPT header, then stripping the trailing ```.
     local content
     content=$(awk -v num="$num" '
-        BEGIN { found_header=0; in_outer=0; in_inner=0; }
+        BEGIN { found_header=0; in_block=0; buf=""; }
         /^## PROMPT/ {
-            if (found_header && in_outer) { exit }
             if ($0 ~ "^## PROMPT " num ":") { found_header=1; next }
             else if (found_header) { exit }
         }
         found_header == 0 { next }
-        # Bare ``` (exactly three backticks, nothing else)
-        /^```$/ {
-            if (in_outer == 0) {
-                in_outer=1
-                next
-            } else if (in_inner) {
-                # Closing an inner block -- print it as part of prompt
-                in_inner=0
-                print
-                next
-            } else {
-                # Closing the outer block -- done
-                exit
-            }
+        # First bare ``` after header opens the outer block
+        !in_block && /^```$/ {
+            in_block=1
+            next
         }
-        # ```lang (code fence with language specifier) -- inner block opening
-        /^```[a-zA-Z]/ {
-            if (in_outer) {
-                in_inner=1
-                print
-                next
-            }
+        in_block {
+            # Accumulate lines (including inner ``` fences)
+            if (buf != "") buf = buf "\n"
+            buf = buf $0
         }
-        in_outer { print }
+        END {
+            # Remove trailing blank lines and the final ``` line
+            n = split(buf, lines, "\n")
+            # Find the last ``` line (outer close) and trim from there
+            last = n
+            for (i = n; i >= 1; i--) {
+                if (lines[i] == "```") { last = i - 1; break }
+            }
+            for (i = 1; i <= last; i++) {
+                if (i > 1) printf "\n"
+                printf "%s", lines[i]
+            }
+            printf "\n"
+        }
     ' "$file")
 
     if [[ -z "$content" ]]; then
@@ -578,7 +590,7 @@ show_help() {
 fetch_latest_prompts() {
     info "Fetching latest prompts from GitHub..."
 
-    local base_url="https://raw.githubusercontent.com/YOUR_ORG/claude-setup-ultimate/main/prompts"
+    local base_url="https://raw.githubusercontent.com/Joportus/claude-setup-ultimate/main/prompts"
     local core_url="${base_url}/core-setup-prompts.md"
     local advanced_url="${base_url}/advanced-setup-prompts.md"
 
