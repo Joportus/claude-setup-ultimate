@@ -207,7 +207,6 @@ Read the existing file first. MERGE new settings -- never replace existing ones.
 Add/merge these settings:
 
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "permissions": {
     "allow": [
       "Read",
@@ -232,8 +231,6 @@ Add/merge these settings:
     "deny": [
       "Read(.env)",
       "Read(.env.*)",
-      "Read(.env.local)",
-      "Read(.env.production)",
       "Read(**/secrets/**)",
       "Read(**/.aws/credentials)",
       "Bash(rm -rf /)",
@@ -293,7 +290,7 @@ Always include these regardless of stack:
 
 Always deny these regardless of stack:
 "Bash(git push --force*)", "Bash(git push -f *)", "Bash(git reset --hard*)",
-"Bash(rm -rf *)", "Read(.env.local)", "Read(.env.production)"
+"Bash(rm -rf *)"
 
 Add if Docker detected:
 "Bash(docker compose *)", "Bash(docker logs *)", "Bash(docker ps *)"
@@ -500,7 +497,7 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 # Adapt this section based on what the discovery report found:
 
 # JavaScript/TypeScript (Biome)
-if command -v npx &>/dev/null && [ -f "biome.json" ] || [ -f "biome.jsonc" ]; then
+if command -v npx &>/dev/null && { [ -f "biome.json" ] || [ -f "biome.jsonc" ]; }; then
   case "$FILE_PATH" in
     *.ts|*.tsx|*.js|*.jsx|*.json|*.css)
       npx biome format --write "$FILE_PATH" 2>/dev/null
@@ -508,7 +505,7 @@ if command -v npx &>/dev/null && [ -f "biome.json" ] || [ -f "biome.jsonc" ]; th
   esac
 
 # JavaScript/TypeScript (Prettier)
-elif command -v npx &>/dev/null && [ -f ".prettierrc" ] || [ -f ".prettierrc.json" ] || [ -f "prettier.config.js" ]; then
+elif command -v npx &>/dev/null && { [ -f ".prettierrc" ] || [ -f ".prettierrc.json" ] || [ -f "prettier.config.js" ]; }; then
   case "$FILE_PATH" in
     *.ts|*.tsx|*.js|*.jsx|*.json|*.css|*.md)
       npx prettier --write "$FILE_PATH" 2>/dev/null
@@ -554,7 +551,7 @@ fi
 # Initialize session with project context
 # Hook: SessionStart
 echo "=== Session Start ==="
-echo "Project: $(basename $(pwd))"
+echo "Project: $(basename "$(pwd)")"
 echo "Branch: $(git branch --show-current 2>/dev/null || echo 'not a git repo')"
 git status --short 2>/dev/null | head -20
 echo ""
@@ -588,7 +585,7 @@ INPUT=$(cat)
 MESSAGE=$(echo "$INPUT" | jq -r '.message // "Claude Code needs your attention"')
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  osascript -e "display notification \"$MESSAGE\" with title \"Claude Code\"" 2>/dev/null
+  osascript -e 'display notification "'"${MESSAGE//\"/\\\"}"'" with title "Claude Code"' 2>/dev/null
 elif command -v notify-send &>/dev/null; then
   notify-send "Claude Code" "$MESSAGE" 2>/dev/null
 fi
@@ -820,8 +817,8 @@ brew install steveyegge/tap/beads
 
 ### Fallback (any OS with npm/bun):
 If brew is not available or fails:
-- bun install -g @anthropic-ai/beads    (if bun detected)
-- npm install -g @anthropic-ai/beads    (fallback)
+- bun install -g @beads/bd    (if bun detected)
+- npm install -g @beads/bd    (fallback)
 
 NOTE: Check the README you fetched in the self-update step for the CURRENT installation method. The package name or tap may have changed.
 
@@ -880,7 +877,7 @@ Create `.claude/hooks/task-completed-check.sh`:
 INPUT=$(cat)
 SUBJECT=$(echo "$INPUT" | jq -r '.task.subject // empty')
 # Extract beads ID from task subject (format: [project-XXXX])
-BEAD_ID=$(echo "$SUBJECT" | grep -oE '\[[-a-zA-Z0-9]+\]' | tr -d '[]')
+BEAD_ID=$(echo "$SUBJECT" | grep -oE '\[[a-z]+-[a-z]+-[a-z0-9]+\]' | tr -d '[]')
 if [[ -n "$BEAD_ID" ]] && command -v bd &>/dev/null && [ -d ".beads" ]; then
   STATUS=$(bd show "$BEAD_ID" --json 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null)
   if [[ "$STATUS" != "closed" && "$STATUS" != "done" ]]; then
@@ -1181,7 +1178,7 @@ Optional next steps:
 ## Notes for Developers
 
 ### Running Order
-Prompts have hard dependencies: **1 -> 2 -> 3 -> 4 -> 5**. Run them in order. Each prompt checks for prerequisites and warns if a prior prompt was skipped.
+Prompts have dependencies: **1 -> 2 -> 3 -> 4 -> 5**. Run them in order. Each prompt checks for prerequisites and warns if a prior prompt was skipped. Note: P3->P4 and P4->P5 are "soft" dependencies -- these prompts warn and continue if the prior was skipped. P1->P2->P3 are hard dependencies (later prompts need the config files created by earlier ones).
 
 ### Idempotency
 Every prompt is safe to run multiple times. It checks what exists before creating, merges instead of replacing, and backs up before modifying.

@@ -32,9 +32,9 @@ Run these commands and analyze the results:
 
 1. `claude mcp list` -- existing MCP servers
 2. `cat .mcp.json 2>/dev/null` -- project-level MCP config
-3. `cat ~/.claude.json 2>/dev/null | jq '.mcpServers // empty'` -- user-level config
+3. `cat ~/.claude/settings.json 2>/dev/null | jq '.mcpServers // empty'` -- user-level config
 4. Detect the project stack by reading package.json, Cargo.toml, pyproject.toml, go.mod, etc.
-5. Check for API keys: `env | grep -iE '(GITHUB|SUPABASE|BRAVE|SENTRY|OPENAI).*TOKEN\|KEY' | sed 's/=.*/=***/'`
+5. Check for API keys: `env | grep -iE '(GITHUB|SUPABASE|BRAVE|SENTRY|OPENAI).*(TOKEN|KEY)' | sed 's/=.*/=***/'`
 
 Report what you find before proceeding.
 
@@ -177,7 +177,7 @@ Create a custom review agent in `.claude/agents/` that reviews other agents' wor
 ---
 name: code-reviewer
 description: Adversarial code review agent that catches issues other agents miss
-tools: [Read, Glob, Grep, Bash, WebFetch]
+tools: Read, Glob, Grep, Bash, WebFetch
 ---
 
 You are an adversarial code reviewer. Your job is to find problems that the implementing agent missed.
@@ -210,8 +210,10 @@ Add to the project's `.claude/settings.json` or `~/.claude/settings.json`:
 ```
 
 - `ENABLE_TOOL_SEARCH=auto:5`: Defers MCP tool loading when definitions exceed 5% of context (saves ~85% context)
-- `MCP_TIMEOUT=10000`: 10-second timeout for slow server startups
-- `MAX_MCP_OUTPUT_TOKENS=25000`: Cap individual server output to prevent context flooding
+- `MCP_TIMEOUT=10000`: 10-second timeout for slow server startups (experimental/community-reported -- may not be recognized by all Claude Code versions)
+- `MAX_MCP_OUTPUT_TOKENS=25000`: Cap individual server output to prevent context flooding (experimental/community-reported -- may not be recognized by all Claude Code versions)
+
+> **Note**: `MCP_TIMEOUT` and `MAX_MCP_OUTPUT_TOKENS` are experimental/community-reported env vars. They may not be recognized by all Claude Code versions. `ENABLE_TOOL_SEARCH` is officially documented.
 
 ## Step 7: Configure Permissions for MCP Tools
 
@@ -358,7 +360,7 @@ Add to Claude Code settings (`~/.claude/settings.json`):
 ```json
 {
   "env": {
-    "ZDOTDIR": "~/.config/zsh-claude"
+    "ZDOTDIR": "$HOME/.config/zsh-claude"
   }
 }
 ```
@@ -433,8 +435,12 @@ macOS default is only 256 -- far too low for dev tools:
 # Increase for current session
 ulimit -n 65536
 
-# Make permanent: add to your shell config
+# Make permanent: add to your shell config (and ZDOTDIR config if using it)
 grep -q 'ulimit -n 65536' ~/.zshrc 2>/dev/null || echo 'ulimit -n 65536 2>/dev/null' >> ~/.zshrc
+# Also add to ZDOTDIR if it exists (Claude Code uses this shell)
+if [ -f ~/.config/zsh-claude/.zshrc ]; then
+  grep -q 'ulimit -n 65536' ~/.config/zsh-claude/.zshrc 2>/dev/null || echo 'ulimit -n 65536 2>/dev/null' >> ~/.config/zsh-claude/.zshrc
+fi
 ```
 
 For a system-wide permanent fix (survives reboot), create `/Library/LaunchDaemons/limit.maxfiles.plist`:
@@ -477,21 +483,27 @@ Apply only on macOS (`uname -s` == "Darwin"):
 # Disable App Nap for terminal (prevents throttling background Claude)
 defaults write "${TERM_PROGRAM_BUNDLE_ID:-com.apple.Terminal}" NSAppSleepDisabled -bool YES 2>/dev/null
 
-# Speed up animations (snappier window management)
-defaults write NSGlobalDomain NSAutomaticWindowAnimationsEnabled -bool false
-defaults write com.apple.dock expose-animation-duration -float 0.1
-defaults write com.apple.dock autohide-delay -float 0
-defaults write com.apple.dock autohide-time-modifier -float 0.2
-
-# Disable crash reporter dialog (prevents modal blocking)
-defaults write com.apple.CrashReporter DialogType -string "none"
-
 # Prevent .DS_Store on network/USB volumes
 defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true
 defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true
 
-# Prevent sleep on AC power (long agent sessions)
-sudo pmset -c sleep 0 disksleep 0 powernap 0 2>/dev/null
+# OPTIONAL: Uncomment the following if you want system-wide macOS optimizations
+# These change Dock behavior, disable animations, and modify crash reporter settings.
+
+# # Speed up animations (snappier window management)
+# defaults write NSGlobalDomain NSAutomaticWindowAnimationsEnabled -bool false
+# defaults write com.apple.dock expose-animation-duration -float 0.1
+# defaults write com.apple.dock autohide-delay -float 0
+# defaults write com.apple.dock autohide-time-modifier -float 0.2
+# # Apply Dock changes
+# killall Dock 2>/dev/null
+
+# # Disable crash reporter dialog (prevents modal blocking)
+# defaults write com.apple.CrashReporter DialogType -string "none"
+
+# OPTIONAL: Prevent sleep on AC power (long agent sessions)
+# Requires sudo -- run manually if desired:
+#   sudo pmset -c sleep 0 disksleep 0 powernap 0
 
 # Caffeinate: prevent sleep during active agent sessions
 # Usage: caffeinate -dims -t 14400 & (keeps awake for 4 hours)
@@ -500,16 +512,24 @@ echo '# Caffeinate alias for long Claude sessions (prevents sleep/screen dim)
 alias claude-long="caffeinate -dims claude"
 alias claude-team="caffeinate -dims claude --teammate-mode in-process"' >> ~/.zshrc.claude-optimized 2>/dev/null
 
-# Apply Dock changes
-killall Dock 2>/dev/null
+# Ensure the optimized config is sourced from ~/.zshrc (or ZDOTDIR)
+grep -q 'zshrc.claude-optimized' ~/.zshrc 2>/dev/null || echo '[ -f ~/.zshrc.claude-optimized ] && source ~/.zshrc.claude-optimized' >> ~/.zshrc
+if [ -f ~/.config/zsh-claude/.zshrc ]; then
+  grep -q 'zshrc.claude-optimized' ~/.config/zsh-claude/.zshrc 2>/dev/null || echo '[ -f ~/.zshrc.claude-optimized ] && source ~/.zshrc.claude-optimized' >> ~/.config/zsh-claude/.zshrc
+fi
 ```
 
 ## Step 6: .claudeignore (Token Savings: 50-90%)
 
-Create or update `.claudeignore` to prevent Claude from reading irrelevant files. A single `package-lock.json` can consume 80,000 tokens:
+Create or update `.claudeignore` to prevent Claude from reading irrelevant files. A single `package-lock.json` can consume 80,000 tokens.
+
+**IMPORTANT**: If `.claudeignore` already exists (e.g., from Prompt 2), merge new entries instead of overwriting. Read the existing file, combine entries, deduplicate, and write back:
 
 ```bash
-cat > .claudeignore << 'IGNOREEOF'
+# Merge with existing .claudeignore (preserves Prompt 2 entries)
+EXISTING=""
+[ -f .claudeignore ] && EXISTING=$(cat .claudeignore)
+cat > /tmp/.claudeignore-new << 'IGNOREEOF'
 # Dependencies (massive token waste)
 node_modules/
 .pnpm/
@@ -571,6 +591,9 @@ docker-data/
 # Large generated docs
 docs/api-reference/generated/
 IGNOREEOF
+# Merge: combine existing + new, deduplicate, write back
+{ echo "$EXISTING"; cat /tmp/.claudeignore-new; } | grep -v '^$' | sort -u > .claudeignore
+rm -f /tmp/.claudeignore-new
 ```
 
 Adapt based on detected stack: add `target/` for Rust, `.venv/` for Python, etc.
@@ -590,7 +613,7 @@ Add to `~/.claude/settings.json`:
 ```
 
 - `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60`: Compact at 60% context (default ~95%) -- prevents quality degradation
-- `DISABLE_NON_ESSENTIAL_MODEL_CALLS=1`: Skip flavor text generation, saves ~$0.04/session
+- `DISABLE_NON_ESSENTIAL_MODEL_CALLS=1`: Skip flavor text generation, saves ~$0.04/session (experimental/community-reported -- may not be recognized by all Claude Code versions)
 - `ENABLE_TOOL_SEARCH=auto:5`: Defer MCP tools at 5% threshold (saves ~85% tool definition tokens)
 
 ### Habits That Save Tokens
@@ -637,7 +660,7 @@ Re-run ALL baseline measurements from Step 1 and compare:
 
 ```bash
 echo "=== POST-OPTIMIZATION RESULTS ==="
-echo "Shell startup:" && ZDOTDIR=~/.config/zsh-claude time zsh -i -c exit 2>&1
+echo "Shell startup:" && { time ZDOTDIR=~/.config/zsh-claude zsh -i -c exit; } 2>&1
 echo "Git status:" && time git status --short 2>&1
 echo "File descriptors:" && ulimit -n
 echo ".claudeignore patterns:" && wc -l .claudeignore 2>/dev/null
@@ -753,7 +776,12 @@ fi
 echo "--- Hooks ---"
 if [ -d .claude/hooks ]; then
   SCRIPTS=$(find .claude/hooks -name "*.sh" | wc -l)
-  EXECUTABLE=$(find .claude/hooks -name "*.sh" -perm +111 | wc -l)
+  # -perm +111 is BSD-only; -perm /111 is GNU; -executable is GNU fallback
+  if find --version 2>&1 | grep -q GNU; then
+    EXECUTABLE=$(find .claude/hooks -name "*.sh" -perm /111 | wc -l)
+  else
+    EXECUTABLE=$(find .claude/hooks -name "*.sh" -perm +111 | wc -l)
+  fi
   echo "INFO: $SCRIPTS hook scripts found, $EXECUTABLE are executable"
 
   # Check each script is executable
@@ -845,10 +873,10 @@ echo "--- Performance ---"
 
 # Shell startup
 if [ -d ~/.config/zsh-claude ]; then
-  SHELL_MS=$(ZDOTDIR=~/.config/zsh-claude zsh -i -c 'exit' 2>&1 | grep real | awk '{print $2}' || echo "unknown")
+  SHELL_MS=$({ time ZDOTDIR=~/.config/zsh-claude zsh -i -c 'exit'; } 2>&1 | grep real | awk '{print $2}' || echo "unknown")
   echo "PASS: ZDOTDIR configured (startup: $SHELL_MS)"
 else
-  SHELL_MS=$(zsh -i -c 'exit' 2>&1 | grep real | awk '{print $2}' || echo "unknown")
+  SHELL_MS=$({ time zsh -i -c 'exit'; } 2>&1 | grep real | awk '{print $2}' || echo "unknown")
   echo "INFO: Shell startup: $SHELL_MS (target: < 0.100s)"
 fi
 
