@@ -279,7 +279,8 @@ The permissions MUST be adapted to the detected stack. Use this mapping:
 
 ### Go:
 "Bash(go build *)", "Bash(go run *)", "Bash(go test *)",
-"Bash(golangci-lint *)", "Bash(go mod *)"
+"Bash(go vet *)", "Bash(go fmt *)", "Bash(golangci-lint *)",
+"Bash(staticcheck *)", "Bash(go mod *)"
 
 ### Ruby:
 "Bash(bundle *)", "Bash(rails *)", "Bash(rspec *)", "Bash(rubocop *)", "Bash(rake *)"
@@ -329,7 +330,7 @@ Add stack-specific entries:
 - JS/TS: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lockb`
 - Python: `*.egg-info/`, `.mypy_cache/`, `.ruff_cache/`
 - Rust: `target/`
-- Go: `vendor/`
+- Go: `vendor/`, `bin/`
 
 ## STEP 4: CLAUDE.md
 
