@@ -45,7 +45,11 @@ Check for lock files in this order (first match wins):
 ### 2. Framework & Language
 - Read `package.json` (if exists): check `dependencies` and `devDependencies` for frameworks (next, react, vue, svelte, express, fastify, etc.)
 - Check for `Cargo.toml` (Rust), `go.mod` (Go), `requirements.txt`/`pyproject.toml` (Python), `Gemfile` (Ruby)
-- Detect language from predominant file extensions: `.ts`/`.tsx`, `.py`, `.rs`, `.go`, `.rb`, `.java`
+- ALSO scan immediate subdirectories for these files (multi-component projects often nest configs):
+  `find . -maxdepth 2 \( -name "pyproject.toml" -o -name "requirements.txt" -o -name "Cargo.toml" -o -name "go.mod" -o -name "Gemfile" \) -not -path "*/node_modules/*" 2>/dev/null`
+- Count predominant file extensions to detect ALL languages present:
+  `find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.py" -o -name "*.rs" -o -name "*.go" -o -name "*.rb" -o -name "*.java" \) -not -path "*/node_modules/*" -not -path "*/.venv/*" -not -path "*/target/*" 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn`
+- If multiple languages have significant file counts (>10 files each), report as multi-language project and include ALL detected stacks
 - Check for `tsconfig.json` (TypeScript), `.python-version`, `rust-toolchain.toml`
 
 ### 3. Existing Claude Code Configuration
