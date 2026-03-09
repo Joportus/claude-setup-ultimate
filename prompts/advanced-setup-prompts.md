@@ -365,7 +365,9 @@ Add to Claude Code settings (`~/.claude/settings.json`):
 }
 ```
 
-**Verification**: `ZDOTDIR=~/.config/zsh-claude time zsh -i -c exit` -- should be < 50ms.
+> **Note**: Tilde (`~`) does NOT expand in JSON values. Use `$HOME` as shown above (Claude Code expands env vars in settings), or use the absolute path (e.g., `"/Users/yourname/.config/zsh-claude"`).
+
+**Verification**: `{ time ZDOTDIR=$HOME/.config/zsh-claude zsh -i -c exit; } 2>&1` -- should be < 50ms.
 
 ### B. If You Prefer Not to Use ZDOTDIR
 

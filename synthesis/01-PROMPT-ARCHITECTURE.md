@@ -131,11 +131,11 @@ Each prompt checks different URLs based on its domain:
 | # | Name | Purpose | Token Est. | Self-Update URLs | Output Artifacts |
 |---|------|---------|-----------|-----------------|-----------------|
 | 1 | **Discovery & Analysis** | Analyze repo, detect stack, plan setup | ~4,000 | `llms.txt`, `best-practices` | `/tmp/claude-setup-discovery.json` (detection results) |
-| 2 | **Foundation** | settings.json, permissions, CLAUDE.md scaffold | ~5,500 | `settings`, `permissions`, `claude-md`, `security` | `~/.claude/settings.json`, `.claude/settings.json`, `CLAUDE.md` |
+| 2 | **Foundation** | settings.json, permissions, CLAUDE.md, .claudeignore | ~5,500 | `settings`, `permissions`, `claude-md`, `security` | `~/.claude/settings.json`, `.claude/settings.json`, `CLAUDE.md`, `.claudeignore` |
 | 3 | **Hooks & Quality Gates** | All 18 hook events, quality gate scripts | ~5,000 | `hooks`, `hooks-guide` | `.claude/hooks/`, settings.json hooks block |
 | 4 | **Beads Integration** | Install beads, configure hooks, init project | ~4,500 | `github.com/steveyegge/beads` | `bd init`, `.beads/`, beads hooks |
-| 5 | **Agent Teams** | Team patterns, coordination, hooks integration | ~4,000 | `agent-teams` | settings.json teams config, team hooks |
-| 6 | **MCP & External Tools** | Essential MCP servers, skills, plugins | ~5,500 | `mcp`, MCP registry | `.mcp.json` or `.claude/mcp.json`, installed skills |
+| 5 | **Agent Teams** | Team patterns, coordination, agent definitions | ~4,000 | `agent-teams` | `.claude/agents/` (researcher, implementer, reviewer), CLAUDE.md teams section |
+| 6 | **MCP & External Tools** | Essential MCP servers, external dev tools | ~5,500 | `mcp`, MCP registry | `.mcp.json`, MCP server permissions |
 | 7 | **System Optimization** | Shell, git, filesystem, network, terminal | ~4,500 | `settings`, `sandboxing` | Shell config, git config, `.claudeignore` |
 | 8 | **Verification & Testing** | Run all checks, spawn test team, verify | ~3,500 | All URLs | Verification report |
 
@@ -177,32 +177,40 @@ The prompt instructs Claude to detect:
 
 ```json
 {
-  "timestamp": "2026-03-05T12:00:00Z",
+  "timestamp": "<ISO 8601>",
+  "claudeCodeVersion": "<from docs or 'unknown'>",
   "project": {
     "name": "my-project",
     "path": "/Users/me/my-project",
     "language": "typescript",
     "framework": "nextjs-15",
     "packageManager": "bun",
-    "monorepo": false
+    "monorepo": false,
+    "monorepoTool": null
   },
   "existingConfig": {
-    "claudeMd": { "exists": true, "path": "CLAUDE.md", "lines": 150 },
-    "claudeDir": { "exists": true, "hasSettings": true, "hasHooks": false },
-    "userSettings": { "exists": true, "path": "~/.claude/settings.json" },
-    "mcp": { "exists": false },
-    "beads": { "exists": false },
-    "claudeignore": { "exists": false }
+    "claudeMd": { "exists": true, "lines": 150, "hasSections": ["Quick Start", "Architecture"] },
+    "claudeDir": { "exists": true, "hasSettings": true, "hasHooks": false, "hasAgents": false, "hasSkills": false },
+    "userSettings": { "exists": true, "hasPermissions": true, "hasHooks": false, "hasEnv": false },
+    "mcp": { "exists": false, "servers": [] },
+    "beads": { "installed": false, "initialized": false, "version": null },
+    "claudeignore": { "exists": false, "lines": 0 }
   },
   "qualityTools": {
     "linter": "biome",
     "formatter": "biome",
     "typeChecker": "typescript",
-    "testRunner": "bun"
+    "testRunner": "bun",
+    "deadCode": null,
+    "other": []
   },
-  "ci": {
-    "platform": "github-actions",
-    "workflows": ["ci.yml", "deploy.yml"]
+  "ci": { "platform": "github-actions", "workflows": ["ci.yml", "deploy.yml"] },
+  "docker": { "exists": false, "compose": false },
+  "services": [],
+  "performance": {
+    "shellStartupMs": 450,
+    "gitFsmonitor": false,
+    "ulimitN": 256
   },
   "recommendations": [
     "CLAUDE.md exists but is missing hooks section -- P3 will add it",
@@ -261,7 +269,6 @@ Create or update with:
 
 ```jsonc
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   // Enable agent teams (experimental but essential)
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
@@ -274,18 +281,22 @@ Create or update with:
       "Glob",
       "Grep",
       // Common safe commands
-      "Bash(git status)",
+      "Bash(git status*)",
       "Bash(git log *)",
       "Bash(git diff *)",
       "Bash(git branch *)",
       "Bash(which *)",
-      "Bash(cat *)",
       "Bash(ls *)",
       "Bash(pwd)",
       "Bash(echo *)",
       "Bash(date)",
       "Bash(uname *)",
-      "Bash(wc *)"
+      "Bash(wc *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      // MCP tools (Context7 for documentation)
+      "mcp__context7__*"
     ],
     "deny": [
       // Never read secrets
@@ -295,11 +306,15 @@ Create or update with:
       "Read(**/.aws/credentials)",
       // Never execute dangerous commands
       "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf .)",
       "Bash(sudo rm *)",
       "Bash(curl * | bash)",
-      "Bash(wget * | bash)",
       "Bash(curl * | sh)",
-      "Bash(wget * | sh)"
+      "Bash(wget * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(chmod 777 *)",
+      "Bash(eval *)"
     ]
   }
 }
@@ -311,10 +326,9 @@ Create or update with stack-specific settings. Example for a Next.js/TypeScript/
 
 ```jsonc
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
-      // Package manager (detected from P1)
+      // Package manager (detected from P1 -- example: bun)
       "Bash(bun install *)",
       "Bash(bun run *)",
       "Bash(bun test *)",
@@ -327,20 +341,24 @@ Create or update with stack-specific settings. Example for a Next.js/TypeScript/
       "Bash(npx biome *)",
       "Bash(npx eslint *)",
       "Bash(npx knip *)",
-      "Bash(npx semgrep *)",
-      // Git (safe operations)
+      // Git (safe operations -- always include regardless of stack)
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git stash *)",
       "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git merge *)",
       // Docker (if detected)
       "Bash(docker compose *)",
-      "Bash(docker logs *)"
+      "Bash(docker logs *)",
+      "Bash(docker ps *)"
     ],
     "deny": [
-      // Project-specific secrets
-      "Read(.env.local)",
-      "Read(.env.production)"
+      // Never force push or hard reset
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard*)",
+      "Bash(rm -rf *)"
     ],
     "defaultMode": "acceptEdits"
   }
@@ -348,10 +366,10 @@ Create or update with stack-specific settings. Example for a Next.js/TypeScript/
 ```
 
 The prompt MUST adapt the permission rules based on the detected stack:
-- **Python projects**: `Bash(pip install *)`, `Bash(pytest *)`, `Bash(python -m *)`, `Bash(ruff *)`, `Bash(mypy *)`
-- **Rust projects**: `Bash(cargo build *)`, `Bash(cargo test *)`, `Bash(cargo clippy *)`, `Bash(cargo fmt *)`
-- **Go projects**: `Bash(go build *)`, `Bash(go test *)`, `Bash(golangci-lint *)`
-- **Ruby projects**: `Bash(bundle *)`, `Bash(rails *)`, `Bash(rspec *)`, `Bash(rubocop *)`
+- **Python projects**: `Bash(pip install *)`, `Bash(uv *)`, `Bash(python -m *)`, `Bash(python *)`, `Bash(pytest *)`, `Bash(ruff *)`, `Bash(mypy *)`, `Bash(black *)`
+- **Rust projects**: `Bash(cargo build *)`, `Bash(cargo run *)`, `Bash(cargo test *)`, `Bash(cargo clippy *)`, `Bash(cargo fmt *)`, `Bash(cargo add *)`
+- **Go projects**: `Bash(go build *)`, `Bash(go run *)`, `Bash(go test *)`, `Bash(go vet *)`, `Bash(go fmt *)`, `Bash(golangci-lint *)`, `Bash(staticcheck *)`, `Bash(go mod *)`
+- **Ruby projects**: `Bash(bundle *)`, `Bash(rails *)`, `Bash(rspec *)`, `Bash(rubocop *)`, `Bash(rake *)`
 
 #### C. CLAUDE.md
 
@@ -363,33 +381,32 @@ If CLAUDE.md does not exist, create a comprehensive scaffold. If it exists, exte
 # CLAUDE.md -- [Project Name]
 
 ## Overview
-[1-2 sentences about the project]
+[Read README.md or package.json description. If neither exists: "TODO: Add project description"]
 
 **Stack:** [detected] | **Language:** [detected] | **Package Manager:** [detected]
 
 ## Quick Start
-[detected build/run/test commands]
+[detected install/dev/build/test commands]
 
 ## Architecture
-[directory structure overview]
+[List top-level directories with 1-line descriptions]
 
 ## Core Patterns
-[framework-specific patterns]
+[3-5 framework-specific patterns]
 
 ## Quality Gates
-[detected quality tools and how to run them]
+[detected quality tools and their run commands in a table]
 
 ## NEVER
-[project-specific prohibitions]
+- No hardcoded API keys or credentials -- use environment variables
+- No skipping quality gates before committing
 
 ## ALWAYS
-[project-specific requirements]
+- Run quality checks before every commit
+- Follow existing code conventions in the codebase
 
-## External Services
-[detected integrations]
-
-## Testing
-[detected test patterns]
+## Self-Updating Rule
+When you learn something useful from debugging, bugfixing, or implementing -- update this file immediately.
 ```
 
 **Key CLAUDE.md best practices to embed** (from raw/04-settings-permissions-claudemd.md, raw/10-context-memory-persistence.md):
@@ -402,11 +419,12 @@ If CLAUDE.md does not exist, create a comprehensive scaffold. If it exists, exte
 
 ### Verification
 
-1. `~/.claude/settings.json` exists and is valid JSON with `$schema`
-2. `.claude/settings.json` exists and is valid JSON with `$schema`
-3. `CLAUDE.md` exists with all core sections
-4. No existing configuration was destroyed
-5. Permission rules match the detected stack
+1. `~/.claude/settings.json` exists and is valid JSON with permissions.allow and permissions.deny
+2. `.claude/settings.json` exists and is valid JSON with stack-specific permissions and deny rules
+3. `CLAUDE.md` exists with >= 5 sections
+4. `.claudeignore` exists with >= 10 patterns
+5. No existing configuration was destroyed (backup files exist if originals were modified)
+6. Permission rules match the detected stack
 
 ### Estimated Tokens: ~5,500
 
@@ -439,13 +457,13 @@ https://claude.com/blog/how-to-configure-hooks
 
 ```
 .claude/hooks/
-  pre-commit-check.sh     # Pre-commit quality gate
-  post-tool-lint.sh       # Auto-lint after file edits
-  block-dangerous.sh      # Block dangerous commands
-  session-start.sh        # Session initialization
-  pre-compact.sh          # Save state before compaction
-  notification.sh         # Desktop notifications
-  stop-summary.sh         # End-of-task summary
+  block-dangerous.sh      # Block dangerous commands (PreToolUse, matcher: Bash)
+  post-tool-lint.sh       # Auto-format after file edits (PostToolUse, matcher: Write|Edit|MultiEdit)
+  session-start.sh        # Session initialization (SessionStart)
+  pre-compact.sh          # Save state before compaction (PreCompact)
+  notification.sh         # Desktop notifications (Notification, async)
+  stop-summary.sh         # End-of-session summary (Stop)
+  tdd-enforce.sh          # TDD reminder -- optional (Stop)
 ```
 
 #### B. Hook Event Configuration
@@ -477,7 +495,7 @@ The prompt configures these hook events (all 18 supported events, but only insta
 | `TeammateIdle` | Verify beads issues closed before agent goes idle |
 | `TaskCompleted` | Verify beads issues closed before task marked complete |
 
-**Tier 4: Advanced (optional)**
+**Tier 4: Advanced (optional -- not configured by prompts, verify availability via self-update)**
 
 | Event | Hook Purpose |
 |-------|-------------|
@@ -522,9 +540,9 @@ command -v bd >/dev/null && bd prime 2>/dev/null
 #!/bin/bash
 # Cross-platform notification
 INPUT=$(cat)
-MESSAGE=$(echo "$INPUT" | jq -r '.notification.message // "Claude needs attention"')
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  osascript -e "display notification \"$MESSAGE\" with title \"Claude Code\""
+MESSAGE=$(echo "$INPUT" | jq -r '.message // "Claude Code needs your attention"')
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  osascript -e 'display notification "'"${MESSAGE//\"/\\\"}"'" with title "Claude Code"'
 elif command -v notify-send &>/dev/null; then
   notify-send "Claude Code" "$MESSAGE"
 fi
@@ -809,35 +827,68 @@ Create `.claude/agents/` directory with team-specific agent definitions:
 <!-- .claude/agents/researcher.md -->
 ---
 name: researcher
-description: Research agent for exploring codebases and documentation
 model: sonnet
+tools: Read, Grep, Glob, WebFetch, WebSearch
+description: Research agent for exploring codebases, documentation, and the web
 ---
 
-You are a research agent. Your job is to explore, read, and analyze code.
-You NEVER modify files. You report findings to the team lead.
+You are a research agent. You explore, read, and analyze -- you NEVER modify files.
 
 ## Rules
-- Read-only operations only
-- Report file paths, line numbers, and code snippets
-- Summarize findings concisely
+- Read-only operations only (Read, Grep, Glob, WebFetch, WebSearch)
+- Report findings with exact file paths and line numbers
+- Include relevant code snippets in your findings
+- Summarize concisely -- the team lead needs actionable information, not verbose reports
+
+## Output Format
+1. **Summary** (2-3 sentences)
+2. **Key Findings** (bullet list with file:line references)
+3. **Recommendations** (what should be done next)
 ```
 
 ```markdown
 <!-- .claude/agents/implementer.md -->
 ---
 name: implementer
-description: Implementation agent for writing and modifying code
 model: opus
+tools: Read, Write, Edit, Bash, Grep, Glob
+description: Implementation agent for writing and modifying production code
 ---
 
 You are an implementation agent. You write production-quality code.
 
 ## Rules
-- Always read existing code before modifying
-- Run type checker after changes
-- Follow project coding standards from CLAUDE.md
-- Claim beads issues before starting work
-- Close beads issues when done
+- Always read existing code before modifying it
+- Run the project's type checker after making changes
+- Follow all coding standards from CLAUDE.md
+- If beads is available: claim the bead before starting, close it when done
+- Keep changes minimal and focused -- do not refactor surrounding code
+```
+
+```markdown
+<!-- .claude/agents/reviewer.md -->
+---
+name: reviewer
+model: sonnet
+tools: Read, Grep, Glob
+description: Code review agent that checks for quality, security, and correctness
+---
+
+You are a code review agent. You review changes for quality issues.
+
+## Review Checklist
+- Security: no hardcoded secrets, no injection vulnerabilities, proper auth checks
+- Error handling: all error paths handled, no swallowed exceptions
+- Type safety: no `any` types, proper null checks
+- Performance: no N+1 queries, no unnecessary re-renders, no blocking operations
+- Testing: changes have corresponding tests or test updates
+
+## Output Format
+For each issue found:
+- **Severity**: CRITICAL / WARNING / INFO
+- **File**: path:line
+- **Issue**: description
+- **Fix**: suggested fix
 ```
 
 #### C. Add Agent Teams CLAUDE.md Section
@@ -853,22 +904,36 @@ Append to CLAUDE.md:
 - Three focused teammates outperform five scattered ones
 
 ### DO
-- Use `mode: "bypassPermissions"` for all agents
-- Agents work on main repo directly (NO worktree isolation)
-- Each agent documents work in beads
-- Agent prompts must be exhaustive (exact file paths, what to change, acceptance criteria)
-- Coordinator verifies after agents complete
+- **mode: "bypassPermissions"** for all agents (they block on permission prompts otherwise)
+- Agents work on main repo directly -- no worktree isolation
+- Each agent documents work in beads (claim before starting, close when done)
+- Agent prompts must be exhaustive: exact file paths, what to change, acceptance criteria, which bead to close
+- Coordinator verifies after agents complete (typecheck, file checks, bead status)
+- Use `subagent_type: "general-purpose"` for any agent that needs to edit files
 
 ### DO NOT
-- Never use `isolation: "worktree"` (changes are lost on agent exit)
-- Never spawn agents without a specific bead assignment
-- Never assume agents completed successfully -- always verify
-- Never exceed 5 teammates without justification
+- NEVER use `isolation: "worktree"` -- worktrees are temporary git copies cleaned on agent exit, all changes lost
+- NEVER spawn agents without a specific task assignment
+- NEVER assume agents completed successfully -- always verify
+- NEVER exceed 5 teammates without explicit justification
+- NEVER mark CC tasks complete without closing the corresponding beads issue
 
-### Dual Task System
-- Beads = primary, persistent tracker (survives compaction)
-- CC tasks = bridge for real-time team coordination
+### Dual Task System (Beads + CC Tasks)
+- Beads = primary, persistent tracker (survives compaction, git-backed)
+- CC tasks (TaskCreate/TaskUpdate) = bridge for real-time team coordination
 - CC task subjects MUST include beads ID: "[project-XXXX] Title"
+- TeammateIdle hook verifies beads closed before agent goes idle
+- TaskCompleted hook verifies beads closed before CC task completes
+
+### Team Lifecycle
+1. Create beads issues with `bd create` (detailed descriptions, dependencies)
+2. TeamCreate (new team per phase)
+3. TaskCreate for each beads issue (subject includes beads ID)
+4. Agents: claim beads -> work -> close beads
+5. Coordinator verifies (typecheck, file checks, bead status)
+6. SendMessage shutdown_request to all agents
+7. TeamDelete
+8. git commit + push
 ```
 
 #### D. Create Team Lifecycle Hooks
@@ -880,11 +945,10 @@ If not already created in P3, add:
 
 ### Verification
 
-1. Agent teams are enabled (`settings.json` has the env var)
-2. `.claude/agents/` directory exists with at least 2 agent definitions
-3. CLAUDE.md contains agent teams section
-4. TeammateIdle and TaskCompleted hooks are configured
-5. Quick test: `claude -p "What agent teams features are available?"` returns relevant info
+1. Agent teams are enabled (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is "1" in `~/.claude/settings.json`)
+2. `.claude/agents/` directory exists with at least 3 agent definitions (researcher, implementer, reviewer)
+3. CLAUDE.md contains agent teams section with DO/DO NOT rules and dual task system instructions
+4. TeammateIdle and TaskCompleted hooks are configured (from P4)
 
 ### Estimated Tokens: ~4,000
 
@@ -923,40 +987,38 @@ https://raw.githubusercontent.com/Cranot/claude-code-guide/main/README.md
 
 #### B. Stack-Specific MCP Servers
 
-| Stack | Server | Purpose |
-|-------|--------|---------|
-| **Any with PostgreSQL** | PostgreSQL MCP | Database queries |
-| **Any with SQLite** | SQLite MCP | Database management |
-| **Web projects** | Brave Search or Firecrawl | Web search/scraping |
-| **Supabase projects** | Supabase Agent Skills | Supabase operations |
+| Detected | Server | Command |
+|----------|--------|---------|
+| Supabase (SUPABASE_* env vars) | Supabase | `claude mcp add --transport http supabase https://mcp.supabase.com/mcp` |
+| PostgreSQL connection string | PostgreSQL | `claude mcp add postgres --transport stdio -- npx -y @modelcontextprotocol/server-postgres "$DATABASE_URL"` |
+| Sentry DSN or @sentry/ in deps | Sentry | `claude mcp add --transport http sentry https://mcp.sentry.dev/mcp` |
+| Vercel project | Vercel | `claude mcp add --transport http vercel https://mcp.vercel.com/` |
+| Stripe keys in env or deps | Stripe | `claude mcp add --transport http stripe https://mcp.stripe.com` |
 
-#### C. Essential Skills
+#### C. External Developer Tools
 
-Install via `npx skills add`:
+The actual prompt recommends these high-value tools:
 
-| Skill | Source | Purpose |
-|-------|--------|---------|
-| **Superpowers** | `obra/superpowers` | Structured lifecycle planning, TDD, debugging |
-| **Agent Skills** (Vercel) | `vercel-labs/agent-skills` | React/Next.js best practices, web design guidelines |
+| Tool | Purpose | Install |
+|------|---------|---------|
+| **ccusage** | Token cost tracking | `bunx ccusage@latest daily` or `bun install -g ccusage` |
+| **Claude Squad** | Multi-session manager (tmux TUI) | `go install github.com/smtg-ai/claude-squad@latest` or `brew install claude-squad` |
+| **Graphite** | PR stacking (eliminates review bottlenecks) | `brew install withgraphite/tap/graphite` |
 
-#### D. Useful Plugins (optional, prompt asks user)
-
-| Plugin | Source | Purpose |
-|--------|--------|---------|
-| **frontend-design** | `claude-plugins-official` | Distinctive UI design |
-| **react-best-practices** | `vercel-labs/agent-skills` | 40+ React/Next.js rules |
-
-#### E. MCP Configuration File
+#### D. MCP Configuration File
 
 Create `.mcp.json` at project root (for Playwright and other browser tools):
 
 ```jsonc
 {
   "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@anthropic-ai/mcp-playwright"],
-      "env": {}
+      "args": ["-y", "@playwright/mcp@latest"]
     }
   }
 }
@@ -964,10 +1026,11 @@ Create `.mcp.json` at project root (for Playwright and other browser tools):
 
 ### Verification
 
-1. `claude mcp list` shows all installed servers
-2. Each server responds to a test query (e.g., Context7: resolve a library)
-3. Skills are installed (check `.claude/skills/` or relevant location)
-4. No API key errors in MCP server logs
+1. `claude mcp list` shows all installed servers and their status
+2. Each server responds to a test query (e.g., Context7: "What is the latest Next.js API? use context7")
+3. No API key errors in any server
+4. `/context` shows MCP tools consuming < 10% of context window
+5. `.mcp.json` is valid JSON (if created for team sharing)
 
 ### Estimated Tokens: ~5,500
 
@@ -1006,14 +1069,15 @@ https://code.claude.com/docs/en/sandboxing
    mkdir -p ~/.config/zsh-claude
    # Create minimal .zshrc with just PATH and essential aliases
    ```
-3. Add to settings.json:
+3. Add to `~/.claude/settings.json`:
    ```jsonc
    {
      "env": {
-       "ZDOTDIR": "~/.config/zsh-claude"
+       "ZDOTDIR": "$HOME/.config/zsh-claude"
      }
    }
    ```
+   Note: Use `$HOME` not `~` -- tilde does not expand in JSON env values.
 
 #### B. Git Optimization
 
@@ -1053,13 +1117,20 @@ build/
 out/
 .turbo/
 
+# Lock files (30,000-80,000 tokens each)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+composer.lock
+Gemfile.lock
+poetry.lock
+
 # Large binary files
 *.wasm
 *.bin
 *.dat
 *.db
 *.sqlite
-*.lock
 
 # IDE
 .idea/
@@ -1087,16 +1158,21 @@ Run `/terminal-setup` within Claude Code to configure:
 
 #### E. Environment Variables
 
-Add performance-related env vars to settings:
+Add performance-related env vars to `~/.claude/settings.json`:
 
 ```jsonc
 {
   "env": {
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000",
-    "NODE_OPTIONS": "--max-old-space-size=4096"
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "60",
+    "ENABLE_TOOL_SEARCH": "auto:5"
   }
 }
 ```
+
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60`: Compact at 60% context (default ~95%) -- prevents quality degradation
+- `ENABLE_TOOL_SEARCH=auto:5`: Defer MCP tools at 5% threshold (saves ~85% tool definition tokens)
+
+> **Note**: Some community-reported env vars (`MCP_TIMEOUT`, `MAX_MCP_OUTPUT_TOKENS`, `DISABLE_NON_ESSENTIAL_MODEL_CALLS`) may not be recognized by all Claude Code versions. The actual prompts note these as experimental.
 
 ### Verification
 
@@ -1134,10 +1210,11 @@ https://code.claude.com/docs/llms.txt
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| User settings | `cat ~/.claude/settings.json \| jq .` | Valid JSON with $schema |
+| User settings | `cat ~/.claude/settings.json \| jq .` | Valid JSON with permissions.allow and permissions.deny |
 | Project settings | `cat .claude/settings.json \| jq .` | Valid JSON with hooks block |
 | CLAUDE.md exists | `test -f CLAUDE.md` | File exists, > 50 lines |
 | CLAUDE.md sections | `grep -c "^##" CLAUDE.md` | >= 5 sections |
+| .claudeignore | `test -f .claudeignore` | File exists with >= 10 patterns |
 | Hooks directory | `ls -la .claude/hooks/` | Scripts exist, are executable |
 | Hook scripts valid | Test each with sample JSON input | Correct JSON output |
 
@@ -1180,7 +1257,7 @@ Output a verification report:
 ```
 === Claude Code Setup Verification Report ===
 
-[PASS] User settings: Valid JSON with schema
+[PASS] User settings: Valid JSON with permissions
 [PASS] Project settings: Valid JSON with hooks
 [PASS] CLAUDE.md: 12 sections, 280 lines
 [PASS] Hooks: 6 scripts, all executable

@@ -393,7 +393,7 @@ Ensure these directories exist:
 
 Run these checks and report results:
 
-1. `~/.claude/settings.json` -- valid JSON? has $schema? has permissions.allow? has permissions.deny?
+1. `~/.claude/settings.json` -- valid JSON? has permissions.allow? has permissions.deny?
 2. `.claude/settings.json` -- valid JSON? has stack-specific permissions? has deny rules?
 3. `CLAUDE.md` -- exists? has >= 5 sections (count lines starting with ##)?
 4. `.claudeignore` -- exists? has >= 10 patterns?
