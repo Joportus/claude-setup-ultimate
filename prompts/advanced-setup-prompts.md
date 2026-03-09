@@ -210,10 +210,8 @@ Add to the project's `.claude/settings.json` or `~/.claude/settings.json`:
 ```
 
 - `ENABLE_TOOL_SEARCH=auto:5`: Defers MCP tool loading when definitions exceed 5% of context (saves ~85% context)
-- `MCP_TIMEOUT=10000`: 10-second timeout for slow server startups (experimental/community-reported -- may not be recognized by all Claude Code versions)
-- `MAX_MCP_OUTPUT_TOKENS=25000`: Cap individual server output to prevent context flooding (experimental/community-reported -- may not be recognized by all Claude Code versions)
-
-> **Note**: `MCP_TIMEOUT` and `MAX_MCP_OUTPUT_TOKENS` are experimental/community-reported env vars. They may not be recognized by all Claude Code versions. `ENABLE_TOOL_SEARCH` is officially documented.
+- `MCP_TIMEOUT=10000`: 10-second timeout for slow server startups
+- `MAX_MCP_OUTPUT_TOKENS=25000`: Cap individual server output to prevent context flooding
 
 ## Step 7: Configure Permissions for MCP Tools
 
@@ -594,7 +592,7 @@ docker-data/
 docs/api-reference/generated/
 IGNOREEOF
 # Merge: combine existing + new, deduplicate, write back
-{ echo "$EXISTING"; cat /tmp/.claudeignore-new; } | grep -v '^$' | sort -u > .claudeignore
+{ echo "$EXISTING"; cat /tmp/.claudeignore-new; } | awk '!seen[$0]++' > .claudeignore
 rm -f /tmp/.claudeignore-new
 ```
 
@@ -722,7 +720,7 @@ Run each check. Record PASS, FAIL, or SKIP (if component was not installed):
 echo "--- User Settings ---"
 if [ -f ~/.claude/settings.json ]; then
   jq . ~/.claude/settings.json >/dev/null 2>&1 && echo "PASS: Valid JSON" || echo "FAIL: Invalid JSON"
-  jq -r 'has("$schema")' ~/.claude/settings.json | grep -q true && echo "PASS: Has schema" || echo "WARN: No schema (optional)"
+  jq -r 'has("$schema")' ~/.claude/settings.json | grep -q true && echo "WARN: settings.json contains \$schema key -- Claude Code settings do not use \$schema, remove it" || echo "PASS: No \$schema key (correct)"
   jq -r '.permissions.allow // [] | length' ~/.claude/settings.json | xargs -I{} echo "INFO: {} permission rules"
 else
   echo "FAIL: ~/.claude/settings.json does not exist"
@@ -733,10 +731,13 @@ echo "--- Project Settings ---"
 if [ -f .claude/settings.json ]; then
   jq . .claude/settings.json >/dev/null 2>&1 && echo "PASS: Valid JSON" || echo "FAIL: Invalid JSON"
   jq -r 'has("hooks")' .claude/settings.json | grep -q true && echo "PASS: Has hooks" || echo "WARN: No hooks configured"
+  jq -r 'has("sandbox")' .claude/settings.json | grep -q true && echo "PASS: Has sandbox restrictions" || echo "INFO: No sandbox configured (optional -- can restrict Bash to specific paths, executables, and network domains)"
 else
   echo "WARN: .claude/settings.json does not exist (optional if using user-level only)"
 fi
 ```
+
+> **Note on sandbox setting**: Claude Code supports a `sandbox` key in `settings.json` that restricts Bash tool calls to specific paths, executables, and network domains. This complements hook-based blocking with declarative constraints. See https://code.claude.com/docs/en/settings for the schema.
 
 ### B. CLAUDE.md
 
@@ -819,6 +820,19 @@ for event in SessionStart PreToolUse PostToolUse PreCompact Stop Notification; d
     echo "  SKIP: $event hook not configured"
   fi
 done
+
+echo ""
+echo "--- Additional Hook Events (high-value, not checked above) ---"
+echo "  INFO: UserPromptSubmit -- can modify/rewrite prompts before Claude sees them"
+echo "  INFO: PermissionRequest -- can grant or deny permissions programmatically (auto-approve trusted tools)"
+echo "  INFO: PostToolUseFailure -- enables automatic error recovery (retry with fixes)"
+echo "  Tip: See https://code.claude.com/docs/en/hooks for the full event list."
+
+echo ""
+echo "--- Hook Types ---"
+echo "  INFO: Hooks support 4 types: command (shell script, used above), http (webhook),"
+echo "        prompt (LLM-evaluated), and agent (subagent-evaluated)."
+echo "  Tip: Most setups use 'command' hooks. Other types are useful for complex workflows."
 ```
 
 ## Step 3: Beads Verification

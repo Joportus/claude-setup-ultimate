@@ -25,7 +25,8 @@ set -euo pipefail
 readonly VERSION="1.0.0"
 readonly SCRIPT_NAME="setup-claude-ultimate"
 readonly LOG_DIR="/tmp/${SCRIPT_NAME}-logs"
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 readonly CORE_PROMPTS_FILE="${SCRIPT_DIR}/core-setup-prompts.md"
 readonly ADVANCED_PROMPTS_FILE="${SCRIPT_DIR}/advanced-setup-prompts.md"
 readonly ALLOWED_TOOLS="Read,Write,Edit,Bash,Glob,Grep,WebFetch,WebSearch"
@@ -56,6 +57,16 @@ if [[ -t 1 ]]; then
 else
     RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' DIM='' RESET=''
 fi
+
+# === Cleanup Trap ===
+cleanup() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]] && [[ $exit_code -ne 130 ]]; then
+        echo -e "${RED}[ERROR]${RESET} Setup interrupted (exit code: ${exit_code})" >&2
+        generate_report 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
 
 # === State ===
 DRY_RUN=false
@@ -336,12 +347,12 @@ run_prompt() {
             read -r -p "  Run anyway? [y/N] " response
             if [[ ! "$response" =~ ^[Yy]$ ]]; then
                 success "Skipped Prompt ${num} (already configured)"
-                ((SKIPPED++))
+                SKIPPED=$((SKIPPED + 1))
                 return 0
             fi
         else
             info "Already configured, skipping (--yes mode)"
-            ((SKIPPED++))
+            SKIPPED=$((SKIPPED + 1))
             return 0
         fi
     fi
@@ -359,7 +370,7 @@ run_prompt() {
         info "[DRY RUN] Would run Prompt ${num}: ${name}"
         info "[DRY RUN] Prompt length: $(echo "$prompt_content" | wc -c | tr -d ' ') characters"
         info "[DRY RUN] Log would be saved to: ${log_file}"
-        ((SKIPPED++))
+        SKIPPED=$((SKIPPED + 1))
         return 0
     fi
 
@@ -389,7 +400,7 @@ run_prompt() {
     fi
 
     success "Prompt ${num} completed: ${name}"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
     return 0
 }
 
@@ -404,7 +415,7 @@ handle_error() {
 
     if [[ "$AUTO_YES" == true ]]; then
         warn "Auto-skipping failed prompt (--yes mode)"
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
         return 0
     fi
 
@@ -423,7 +434,7 @@ handle_error() {
             ;;
         2)
             warn "Skipping Prompt ${num}"
-            ((FAILED++))
+            FAILED=$((FAILED + 1))
             return 0
             ;;
         3)
@@ -433,7 +444,7 @@ handle_error() {
             ;;
         *)
             warn "Invalid choice. Skipping Prompt ${num}"
-            ((FAILED++))
+            FAILED=$((FAILED + 1))
             return 0
             ;;
     esac
@@ -782,7 +793,7 @@ main() {
         # Check if user wants to skip this prompt
         if should_skip "$i"; then
             info "Skipping Prompt ${i}: ${PROMPT_NAMES[$i]} (--skip)"
-            ((SKIPPED++))
+            SKIPPED=$((SKIPPED + 1))
             continue
         fi
 

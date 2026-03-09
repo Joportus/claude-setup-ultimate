@@ -45,10 +45,11 @@ Check for lock files in this order (first match wins):
 ### 2. Framework & Language
 - Read `package.json` (if exists): check `dependencies` and `devDependencies` for frameworks (next, react, vue, svelte, express, fastify, etc.)
 - Check for `Cargo.toml` (Rust), `go.mod` (Go), `requirements.txt`/`pyproject.toml` (Python), `Gemfile` (Ruby)
+- Check for `pom.xml` (Maven/Java), `build.gradle` or `build.gradle.kts` (Gradle/Java/Kotlin), `build.sbt` (Scala/sbt)
 - ALSO scan immediate subdirectories for these files (multi-component projects often nest configs):
-  `find . -maxdepth 2 \( -name "pyproject.toml" -o -name "requirements.txt" -o -name "Cargo.toml" -o -name "go.mod" -o -name "Gemfile" \) -not -path "*/node_modules/*" 2>/dev/null`
+  `find . -maxdepth 2 \( -name "pyproject.toml" -o -name "requirements.txt" -o -name "Cargo.toml" -o -name "go.mod" -o -name "Gemfile" -o -name "pom.xml" -o -name "build.gradle" -o -name "build.gradle.kts" -o -name "build.sbt" \) -not -path "*/node_modules/*" 2>/dev/null`
 - Count predominant file extensions to detect ALL languages present:
-  `find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.py" -o -name "*.rs" -o -name "*.go" -o -name "*.rb" -o -name "*.java" \) -not -path "*/node_modules/*" -not -path "*/.venv/*" -not -path "*/target/*" 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn`
+  `find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.py" -o -name "*.rs" -o -name "*.go" -o -name "*.rb" -o -name "*.java" -o -name "*.kt" -o -name "*.scala" \) -not -path "*/node_modules/*" -not -path "*/.venv/*" -not -path "*/target/*" 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn`
 - If multiple languages have significant file counts (>10 files each), report as multi-language project and include ALL detected stacks
 - Check for `tsconfig.json` (TypeScript), `.python-version`, `rust-toolchain.toml`
 
@@ -246,7 +247,11 @@ Add/merge these settings:
       "Bash(wget * | bash)",
       "Bash(wget * | sh)",
       "Bash(chmod 777 *)",
-      "Bash(eval *)"
+      "Bash(eval *)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore *)",
+      "Bash(npm publish*)",
+      "Bash(cargo publish*)"
     ]
   },
   "env": {
@@ -462,10 +467,6 @@ BLOCKED_PATTERNS=(
   "rm -rf ~"
   "rm -rf ."
   ":(){ :|:& };:"
-  "curl * | sh"
-  "curl * | bash"
-  "wget * | sh"
-  "wget * | bash"
   "chmod 777"
   "dd if="
   "mkfs"
@@ -482,10 +483,17 @@ BLOCKED_PATTERNS=(
 
 for pattern in "${BLOCKED_PATTERNS[@]}"; do
   if [[ "$COMMAND" == *"$pattern"* ]]; then
-    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"reason\":\"BLOCKED: matches dangerous pattern '$pattern'\"}}"
+    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"BLOCKED: matches dangerous pattern '$pattern'\"}}"
     exit 0
   fi
 done
+
+# Regex-based check for pipe-to-shell patterns
+if [[ "$COMMAND" =~ curl.*\|.*(ba)?sh ]] || [[ "$COMMAND" =~ wget.*\|.*(ba)?sh ]]; then
+  echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"BLOCKED: pipe-to-shell pattern detected\"}}"
+  exit 0
+fi
+
 echo '{}'
 
 ### B. post-tool-lint.sh (Install if linter/formatter detected)
@@ -868,7 +876,7 @@ INPUT=$(cat)
 if command -v bd &>/dev/null && [ -d ".beads" ]; then
   OPEN=$(bd list --status in_progress --json 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
   if [[ "$OPEN" -gt 0 ]]; then
-    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"TeammateIdle\",\"permissionDecision\":\"deny\",\"reason\":\"Agent has $OPEN in-progress beads issue(s). Close them with 'bd close <id> --reason ...' before going idle.\"}}"
+    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"TeammateIdle\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Agent has $OPEN in-progress beads issue(s). Close them with 'bd close <id> --reason ...' before going idle.\"}}"
     exit 0
   fi
 fi
@@ -886,7 +894,7 @@ BEAD_ID=$(echo "$SUBJECT" | grep -oE '\[[a-z]+-[a-z]+-[a-z0-9]+\]' | tr -d '[]')
 if [[ -n "$BEAD_ID" ]] && command -v bd &>/dev/null && [ -d ".beads" ]; then
   STATUS=$(bd show "$BEAD_ID" --json 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null)
   if [[ "$STATUS" != "closed" && "$STATUS" != "done" ]]; then
-    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"TaskCompleted\",\"permissionDecision\":\"deny\",\"reason\":\"Beads issue $BEAD_ID is still '$STATUS'. Close it with 'bd close $BEAD_ID --reason ...' before completing this task.\"}}"
+    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"TaskCompleted\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Beads issue $BEAD_ID is still '$STATUS'. Close it with 'bd close $BEAD_ID --reason ...' before completing this task.\"}}"
     exit 0
   fi
 fi
@@ -1111,7 +1119,7 @@ Read CLAUDE.md. If it does NOT already contain an "Agent Team" section, append:
 - Use `subagent_type: "general-purpose"` for any agent that needs to edit files
 
 ### DO NOT
-- NEVER use `isolation: "worktree"` -- worktrees are temporary git copies cleaned on agent exit, all changes lost
+- In agent team contexts, do not use isolation: 'worktree' on the orchestrator agent. Subagents may use it intentionally for isolated execution.
 - NEVER spawn agents without a specific task assignment
 - NEVER assume agents completed successfully -- always verify
 - NEVER exceed 5 teammates without explicit justification

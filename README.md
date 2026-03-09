@@ -50,8 +50,8 @@ P1: Discovery --------+
 P8: Verification (runs after any/all of the above)
 ```
 
-**Hard dependencies** (must run in order): P2 before P3, P3 before P4, P4 before P5.
-**Soft dependencies** (recommended but not required): P1 before all others, P6 and P7 are independent.
+**Hard dependencies** (must run in order): P1 before P2, P2 before P3.
+**Soft dependencies** (warn and continue if skipped): P3 before P4, P4 before P5.
 
 ---
 

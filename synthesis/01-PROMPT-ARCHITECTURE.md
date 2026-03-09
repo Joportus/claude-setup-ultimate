@@ -981,7 +981,7 @@ https://raw.githubusercontent.com/Cranot/claude-code-guide/main/README.md
 
 | Server | Purpose | Install Command |
 |--------|---------|----------------|
-| **Context7** | Up-to-date library documentation | `claude mcp add context7 --transport http --url https://mcp.context7.com/mcp` |
+| **Context7** | Up-to-date library documentation | `claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp` |
 | **GitHub** | PR/issue management, code search | `claude mcp add github --transport http --url https://api.githubcopilot.com/mcp/` |
 | **Playwright** | Browser automation and testing | `claude mcp add playwright --transport stdio -- npx -y @playwright/mcp@latest` |
 

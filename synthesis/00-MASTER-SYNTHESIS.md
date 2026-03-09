@@ -605,9 +605,6 @@ BLOCKED_PATTERNS=(
   "rm -rf ~"
   "rm -rf ."
   ":(){ :|:& };:"
-  "curl * | sh"
-  "curl * | bash"
-  "wget * | sh"
   "chmod 777"
   "dd if="
   "mkfs"
@@ -625,6 +622,12 @@ for pattern in "${BLOCKED_PATTERNS[@]}"; do
     exit 0
   fi
 done
+
+if [[ "$cmd" =~ curl.*\|.*(ba)?sh ]] || [[ "$cmd" =~ wget.*\|.*(ba)?sh ]]; then
+  echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"reason\":\"BLOCKED: pipe-to-shell detected\"}}"
+  exit 0
+fi
+
 echo '{}'
 ```
 
