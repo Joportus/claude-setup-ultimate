@@ -1,0 +1,30 @@
+{
+  "name": "setup-ultimate",
+  "version": "1.0.0",
+  "description": "Universal Claude Code setup automation -- 9 skills that configure expert-level AI-native development for any project. Detects your stack, installs hooks, permissions, agents, MCP servers, and performance optimizations.",
+  "author": {
+    "name": "Joportus",
+    "url": "https://github.com/Joportus/claude-setup-ultimate"
+  },
+  "repository": "https://github.com/Joportus/claude-setup-ultimate",
+  "license": "MIT",
+  "keywords": [
+    "setup",
+    "configuration",
+    "hooks",
+    "permissions",
+    "security",
+    "performance",
+    "agent-teams",
+    "mcp-servers",
+    "beads",
+    "optimization",
+    "multi-language"
+  ],
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}
